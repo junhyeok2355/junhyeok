@@ -1,0 +1,62 @@
+using UnityEngine;
+using UnityEngine.SceneManagement;
+
+public class CharacterSelector : MonoBehaviour
+{
+    public GameObject[] characterPrefabs;  // 선택 가능한 캐릭터 프리팹 배열
+    private int selectedCharacterIndex = 0;
+
+    private void Start()
+    {
+        LoadSelection();
+        ShowSelectedCharacter();
+    }
+
+    public void SelectNext()
+    {
+        selectedCharacterIndex++;
+        if (selectedCharacterIndex >= characterPrefabs.Length)
+            selectedCharacterIndex = 0;
+
+        ShowSelectedCharacter();
+    }
+
+    public void SelectPrevious()
+    {
+        selectedCharacterIndex--;
+        if (selectedCharacterIndex < 0)
+            selectedCharacterIndex = characterPrefabs.Length - 1;
+
+        ShowSelectedCharacter();
+    }
+
+    private void ShowSelectedCharacter()
+    {
+        // 먼저 모든 캐릭터를 비활성화
+        for (int i = 0; i < characterPrefabs.Length; i++)
+        {
+            characterPrefabs[i].SetActive(i == selectedCharacterIndex);
+        }
+    }
+
+    public void ConfirmSelection()
+    {
+        PlayerPrefs.SetInt("SelectedCharacter", selectedCharacterIndex);
+        PlayerPrefs.Save();
+
+        // 씬 전환 또는 다음 단계로
+        SceneManager.LoadScene("GameScene");  // 원하는 씬 이름으로 바꿔주세요
+    }
+
+    private void LoadSelection()
+    {
+        if (PlayerPrefs.HasKey("SelectedCharacter"))
+        {
+            selectedCharacterIndex = PlayerPrefs.GetInt("SelectedCharacter");
+        }
+        else
+        {
+            selectedCharacterIndex = 0;
+        }
+    }
+}
