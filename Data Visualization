@@ -1,0 +1,440 @@
+from google.colab import files
+
+# 파일 업로드
+uploaded = files.upload()
+
+import pandas as pd
+
+# 업로드된 실제 파일명 가져오기
+file_name = list(uploaded.keys())[0]
+
+# 엑셀 파일 읽기
+df = pd.read_excel(file_name)
+
+
+# 데이터 확인
+print(df.head())
+print(df.columns)
+
+닉네임                                                 리뷰  label
+0        형남임                         나만의 기풍을 만든다 나는 나의 인생을 살아간다    1.0
+1      싱싱야도란  끝이 좀 밋밋한거 빼고는 한국판 아마데우스 느낌도 좀 나고.. 두 배우의 연기는 말...    1.0
+2         킴지                                       충만한 두 사람의 복기    1.0
+3         무면                    감독은 유아인을 썼다는걸 적어도 후회하지는 않았을거 같다    1.0
+4  사랑은 비를 타고  담백한 각본, 담백한 연기, 안전한 선택. 조훈현에 초점을 맞춘 이야기와는 달리 영...    1.0
+Index(['닉네임', '리뷰', 'label'], dtype='object')
+
+import re
+
+# 간단한 전처리 함수 정의
+def clean_text(text):
+    text = str(text).lower()                      # 소문자화
+    text = re.sub(r"[^가-힣a-zA-Z0-9\s]", "", text)  # 특수문자 제거
+    text = re.sub(r"\s+", " ", text).strip()      # 불필요한 공백 제거
+    return text
+
+# review 컬럼에 전처리 적용
+df['clean_review'] = df['리뷰'].apply(clean_text)
+
+# 확인
+df[['리뷰', 'clean_review']].head()
+리뷰	clean_review
+0	나만의 기풍을 만든다 나는 나의 인생을 살아간다	나만의 기풍을 만든다 나는 나의 인생을 살아간다
+1	끝이 좀 밋밋한거 빼고는 한국판 아마데우스 느낌도 좀 나고.. 두 배우의 연기는 말...	끝이 좀 밋밋한거 빼고는 한국판 아마데우스 느낌도 좀 나고 두 배우의 연기는 말할것...
+2	충만한 두 사람의 복기	충만한 두 사람의 복기
+3	감독은 유아인을 썼다는걸 적어도 후회하지는 않았을거 같다	감독은 유아인을 썼다는걸 적어도 후회하지는 않았을거 같다
+4	담백한 각본, 담백한 연기, 안전한 선택. 조훈현에 초점을 맞춘 이야기와는 달리 영...	담백한 각본 담백한 연기 안전한 선택 조훈현에 초점을 맞춘 이야기와는 달리 영화의 ...
+
+# 형태소 분석기 설치
+!pip install konlpy
+Collecting konlpy
+  Downloading konlpy-0.6.0-py2.py3-none-any.whl.metadata (1.9 kB)
+Collecting JPype1>=0.7.0 (from konlpy)
+  Downloading jpype1-1.5.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+Requirement already satisfied: lxml>=4.1.0 in /usr/local/lib/python3.11/dist-packages (from konlpy) (5.4.0)
+Requirement already satisfied: numpy>=1.6 in /usr/local/lib/python3.11/dist-packages (from konlpy) (2.0.2)
+Requirement already satisfied: packaging in /usr/local/lib/python3.11/dist-packages (from JPype1>=0.7.0->konlpy) (24.2)
+Downloading konlpy-0.6.0-py2.py3-none-any.whl (19.4 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 19.4/19.4 MB 49.8 MB/s eta 0:00:00
+Downloading jpype1-1.5.2-cp311-cp311-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (494 kB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 494.1/494.1 kB 29.0 MB/s eta 0:00:00
+Installing collected packages: JPype1, konlpy
+Successfully installed JPype1-1.5.2 konlpy-0.6.0
+
+from konlpy.tag import Okt
+from sklearn.feature_extraction.text import TfidfVectorizer
+
+# 형태소 분석기
+okt = Okt()
+
+# 불용어 리스트 (필요에 따라 확장 가능)
+stopwords = stopwords = [
+    '의', '가', '이', '은', '들', '는','잘', '걍', '과', '도',
+    '를', '으로', '자', '에', '와', '한', '하다', '그리고', '그래서',
+    '하지만',  '뭐', '이런', '저런',
+    '이건', '저건', '그건', '아', '어', '음', '응', '우와', '와', '헐'
+]
+
+# 토큰화 함수
+def tokenize(text):
+    tokens = okt.morphs(text, stem=True)  # 어간 추출 포함
+    tokens = [word for word in tokens if word not in stopwords]  # 불용어 제거
+    return tokens
+
+# TF-IDF 벡터화 (tokenizer는 우리가 만든 함수 사용)
+vectorizer = TfidfVectorizer(tokenizer=tokenize, max_features=5000)
+X = vectorizer.fit_transform(df['clean_review'])
+
+# 라벨값 가져오기
+y = df['label']
+
+/usr/local/lib/python3.11/dist-packages/sklearn/feature_extraction/text.py:517: UserWarning: The parameter 'token_pattern' will not be used since 'tokenizer' is not None'
+  warnings.warn(
+  from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, f1_score, classification_report
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import precision_score, recall_score, f1_score
+
+
+
+# label이 NaN이거나 공백인 경우 모두 제거
+df = df[df['label'].notna()]  # NaN 제거
+df = df[df['label'].astype(str).str.strip() != '']  # 공백 제거
+
+# 여기서 y를 다시 설정해야 함!
+y = df['label']
+
+# 벡터화
+X = vectorizer.fit_transform(df['clean_review'])
+
+# 학습/검증 분리
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# 클래스 균형 고려한 로지스틱 회귀
+model = LogisticRegression(max_iter=1000, class_weight='balanced')
+model.fit(X_train, y_train)
+
+# 예측 및 평가
+y_pred = model.predict(X_test)
+print(" 정확도 (Accuracy):", accuracy_score(y_test, y_pred))
+print(" F1-score:", f1_score(y_test, y_pred))
+print("\n 상세 리포트:\n", classification_report(y_test, y_pred))
+
+
+# 혼동 행렬 계산
+cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
+
+# 시각화
+disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=["부정 (0)", "긍정 (1)"])
+disp.plot(cmap=plt.cm.Blues)
+plt.title("감정 분류 Confusion Matrix")
+plt.show()
+
+
+# 클래스별 점수
+precision = precision_score(y_test, y_pred, average=None, labels=[0, 1])
+recall = recall_score(y_test, y_pred, average=None, labels=[0, 1])
+f1 = f1_score(y_test, y_pred, average=None, labels=[0, 1])
+
+labels = ['부정 (0)', '긍정 (1)']
+x = np.arange(len(labels))
+width = 0.25
+
+fig, ax = plt.subplots()
+rects1 = ax.bar(x - width, precision, width, label='Precision')
+rects2 = ax.bar(x, recall, width, label='Recall')
+rects3 = ax.bar(x + width, f1, width, label='F1-score')
+
+ax.set_ylabel('Score')
+ax.set_title('Precision / Recall / F1-score by Class')
+ax.set_xticks(x)
+ax.set_xticklabels(labels)
+ax.set_ylim([0, 1])
+ax.legend()
+
+# 수치 라벨 표시
+for rects in [rects1, rects2, rects3]:
+    for rect in rects:
+        height = rect.get_height()
+        ax.annotate(f'{height:.2f}', xy=(rect.get_x() + rect.get_width() / 2, height),
+                    xytext=(0, 3), textcoords="offset points", ha='center', va='bottom')
+
+plt.show()
+/usr/local/lib/python3.11/dist-packages/sklearn/feature_extraction/text.py:517: UserWarning: The parameter 'token_pattern' will not be used since 'tokenizer' is not None'
+  warnings.warn(
+ 정확도 (Accuracy): 0.7897196261682243
+ F1-score: 0.7761194029850746
+
+ 상세 리포트:
+               precision    recall  f1-score   support
+
+         0.0       0.78      0.83      0.80       110
+         1.0       0.80      0.75      0.78       104
+
+    accuracy                           0.79       214
+   macro avg       0.79      0.79      0.79       214
+weighted avg       0.79      0.79      0.79       214
+
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48512 (\N{HANGUL SYLLABLE BU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 51221 (\N{HANGUL SYLLABLE JEONG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 44557 (\N{HANGUL SYLLABLE GEUNG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 44048 (\N{HANGUL SYLLABLE GAM}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48516 (\N{HANGUL SYLLABLE BUN}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 47448 (\N{HANGUL SYLLABLE RYU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48512 (\N{HANGUL SYLLABLE BU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 51221 (\N{HANGUL SYLLABLE JEONG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 44557 (\N{HANGUL SYLLABLE GEUNG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+
+# 학습 완료 후 한 번만 저장
+import pickle
+
+with open("sentiment_model.pkl", "wb") as f:
+    pickle.dump(model, f)
+
+with open("vectorizer.pkl", "wb") as f:
+    pickle.dump(vectorizer, f)
+    # 예측용 샘플 리뷰들
+new_reviews = [
+    "진짜 너무 재미있었어요. 배우들 연기도 훌륭하고 몰입감 최고!",
+    "스토리도 별로고 지루했어요. 기대 이하였네요.",
+    "그냥저냥 볼만했지만 다시 보고 싶진 않아요.",
+    "하.. 이게 왜 평점이 높은지 이해 안 됨. 시간 아까움.",
+    "OST랑 연출은 좋았지만 스토리는 조금 아쉬웠다.",
+    "내 인생 최고의 영화다",
+    "영화는 좋았지만, 배우의 연기가 너무 별로임",
+    "진짜 최악의 영화. 사람들이 이걸 왜 좋아하는지 모르겠음.",
+    "좋아요, 재밌어요 ㅋㅋㅋㅋ",
+    "처음부터 끝까지 손에 땀을 쥐게 했어요. 연출 미쳤다 진짜!",
+    "뭔가 큰 기대를 했는데, 별 감흥은 없었네요. 평범했어요.",
+    "연기는 좋았는데 스토리 개연성이 너무 부족해서 몰입이 안 됐어요.",
+    "그냥 시간 때우기용으론 괜찮은 듯. 깊이는 없어요.",
+    "와... 이런 영화 또 나오기 힘들 듯. 감동이 진짜 오래 남아요.",
+    "중간부터 너무 지루해서 몇 번이나 끌까 말까 고민했네요.",
+    "시네마토그래피 하나만큼은 진짜 예술이었음. 눈이 즐거웠어요.",
+    "억지 감동에 유치한 전개까지… 실망스러웠어요.",
+    "생각보다 웃긴 장면 많아서 의외로 괜찮았어요 ㅎㅎ",
+    "뻔한 스토리지만 배우들 케미 덕분에 끝까지 보게 되네요.",
+    "몰입감이 장난 아니었어요. 시간 가는 줄 몰랐네요.",
+    "감정선이 너무 와닿았어요. 보고 나서 여운이 오래 갔어요.",
+    "음... 나쁘진 않았는데 크게 인상 깊진 않네요.",
+    "기대 안 하고 봤는데 생각보다 재밌었음.",
+    "스토리라인이 진짜 탄탄하고 연기력이 뒷받침돼서 몰입됐어요.",
+    "차라리 다른 영화 볼 걸 그랬어요. 너무 아쉬움.",
+    "장면 전환이 어색하고 연출이 전반적으로 산만했어요.",
+    "처음 30분은 흥미로웠는데 그 이후로는 루즈했어요.",
+    "결말이 너무 허무해서 다 본 느낌이 안 남.",
+    "긴장감이 넘쳐서 숨도 제대로 못 쉬고 봤어요.",
+    "배우들의 눈빛 하나하나가 감정을 다 말해줬어요.",
+    "기승전결이 제대로 없는 느낌… 집중이 안 됨.",
+    "진부한 설정에 클리셰 범벅. 예측 가능한 전개였어요.",
+    "짧은 러닝타임이었지만 임팩트는 강했어요.",
+    "잔잔하지만 울림 있는 영화. 생각할 거리를 주네요.",
+    # 예측용 샘플 리뷰들
+new_reviews = [
+    "진짜 너무 재미있었어요. 배우들 연기도 훌륭하고 몰입감 최고!",
+    "스토리도 별로고 지루했어요. 기대 이하였네요.",
+    "그냥저냥 볼만했지만 다시 보고 싶진 않아요.",
+    "하.. 이게 왜 평점이 높은지 이해 안 됨. 시간 아까움.",
+    "OST랑 연출은 좋았지만 스토리는 조금 아쉬웠다.",
+    "내 인생 최고의 영화다",
+    "영화는 좋았지만, 배우의 연기가 너무 별로임",
+    "진짜 최악의 영화. 사람들이 이걸 왜 좋아하는지 모르겠음.",
+    "좋아요, 재밌어요 ㅋㅋㅋㅋ",
+    "처음부터 끝까지 손에 땀을 쥐게 했어요. 연출 미쳤다 진짜!",
+    "뭔가 큰 기대를 했는데, 별 감흥은 없었네요. 평범했어요.",
+    "연기는 좋았는데 스토리 개연성이 너무 부족해서 몰입이 안 됐어요.",
+    "그냥 시간 때우기용으론 괜찮은 듯. 깊이는 없어요.",
+    "와... 이런 영화 또 나오기 힘들 듯. 감동이 진짜 오래 남아요.",
+    "중간부터 너무 지루해서 몇 번이나 끌까 말까 고민했네요.",
+    "시네마토그래피 하나만큼은 진짜 예술이었음. 눈이 즐거웠어요.",
+    "억지 감동에 유치한 전개까지… 실망스러웠어요.",
+    "생각보다 웃긴 장면 많아서 의외로 괜찮았어요 ㅎㅎ",
+    "뻔한 스토리지만 배우들 케미 덕분에 끝까지 보게 되네요.",
+    "몰입감이 장난 아니었어요. 시간 가는 줄 몰랐네요.",
+    "감정선이 너무 와닿았어요. 보고 나서 여운이 오래 갔어요.",
+    "음... 나쁘진 않았는데 크게 인상 깊진 않네요.",
+    "기대 안 하고 봤는데 생각보다 재밌었음.",
+    "스토리라인이 진짜 탄탄하고 연기력이 뒷받침돼서 몰입됐어요.",
+    "차라리 다른 영화 볼 걸 그랬어요. 너무 아쉬움.",
+    "장면 전환이 어색하고 연출이 전반적으로 산만했어요.",
+    "처음 30분은 흥미로웠는데 그 이후로는 루즈했어요.",
+    "결말이 너무 허무해서 다 본 느낌이 안 남.",
+    "긴장감이 넘쳐서 숨도 제대로 못 쉬고 봤어요.",
+    "배우들의 눈빛 하나하나가 감정을 다 말해줬어요.",
+    "기승전결이 제대로 없는 느낌… 집중이 안 됨.",
+    "진부한 설정에 클리셰 범벅. 예측 가능한 전개였어요.",
+    "짧은 러닝타임이었지만 임팩트는 강했어요.",
+    "잔잔하지만 울림 있는 영화. 생각할 거리를 주네요.",
+    "웃기다가 울리다가 정신없이 봤어요. 감정 롤러코스터임.",
+    "OST가 너무 좋아서 계속 찾아 듣고 있어요.",
+    "대사 하나하나에 진심이 느껴졌어요. 명대사도 많고.",
+    "후반부 전개가 너무 빨라서 아쉽더라구요.",
+    "도대체 왜 이렇게 평점이 높은 건지 모르겠음.",
+    "감독의 연출 의도가 뚜렷해서 좋았어요. 예술성도 있고.",
+    "스토리도 평범, 연기도 평범… 그냥 평범의 정석.",
+    "처음엔 별로였는데 보다 보니 빠져들게 되더라.",
+    "배우의 감정 연기가 너무 뛰어나서 같이 울었어요.",
+    "처음 10분 보고 끌 뻔했는데 안 봤으면 후회했을 듯.",
+    "감동보단 그냥 신파 느낌이 강했어요.",
+    "촬영 기법이 독특해서 보는 재미가 있었어요.",
+    "이야기가 너무 전개만 하다가 끝나버린 느낌이에요.",
+    "연출이 안정적이고 분위기가 딱 제가 좋아하는 스타일이에요.",
+    "감정 묘사 너무 억지스러움. 감정이입이 안 됨.",
+    "진심 시간 아까웠음. 별 하나도 아깝다.",
+    "좋은 소재를 이렇게밖에 못 살리다니 아쉬워요.",
+    "배경음악이 장면과 너무 잘 어울렸어요. 분위기 최고.",
+    "오랜만에 눈물 펑펑 흘린 영화. 추천합니다.",
+    "전체적으로 무난했는데 딱히 기억에 남진 않아요.",
+    "너무 뻔한 전개. 중간에 결말이 다 예상됨.",
+    "화려한 CG 말고 남는 게 없는 영화였어요.",
+    "긴장감 넘치는 장면들이 꽤 있어서 보는 재미는 있었어요.",
+    "한 번쯤은 볼만하지만 두 번은 안 볼 듯.",
+    "관객과의 소통이 느껴지는 연출이었어요.",
+    "연기가 어색해서 몰입이 잘 안 됐어요.",
+    "이 영화는 그냥 감성으로 봐야 하는 작품 같아요."
+]
+
+
+import pandas as pd
+import numpy as np
+import pickle
+import re
+import os
+
+# 영화 제목과 리뷰 입력
+movie_title = input("영화 제목을 입력하세요: ").strip()
+user_review = input("리뷰를 입력하세요: ").strip()
+
+# 전처리 함수
+def clean_text(text):
+    text = str(text).lower()
+    text = re.sub(r"[^가-힣a-zA-Z0-9\s]", "", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+# 리뷰 전처리
+cleaned = clean_text(user_review)
+
+# 모델과 벡터라이저 로드
+with open("sentiment_model.pkl", "rb") as f:
+    model = pickle.load(f)
+
+with open("vectorizer.pkl", "rb") as f:
+    vectorizer = pickle.load(f)
+
+# 벡터화 및 예측
+X_new = vectorizer.transform([cleaned])
+pred = model.predict(X_new)[0]  # 0: 부정, 1: 긍정
+label_text = "긍정 😊" if pred == 1 else "부정 😠"
+
+# 예측 결과 출력
+print("예측된 감정 라벨:", label_text)
+
+# 기존 엑셀 파일 불러오기
+file_path = "새로운 리뷰 데이터베이스.xlsx"
+if os.path.exists(file_path):
+    df = pd.read_excel(file_path)
+else:
+    df = pd.DataFrame(columns=["영화제목", "리뷰", "label"])
+
+# 새 데이터 추가
+new_data = pd.DataFrame([[movie_title, user_review, label_text]], columns=["영화제목", "리뷰", "label"])
+df = pd.concat([df, new_data], ignore_index=True)
+
+# 저장
+df.to_excel(file_path, index=False)
+print(f"리뷰와 예측 결과가 '{file_path}' 파일에 저장되었습니다.")
+영화 제목을 입력하세요: 승부
+리뷰를 입력하세요: 완전 재미있어요! 대박
+예측된 감정 라벨: 긍정 😊
+리뷰와 예측 결과가 '새로운 리뷰 데이터베이스.xlsx' 파일에 저장되었습니다.
+import matplotlib.pyplot as plt
+
+# 라벨 비율 계산
+label_counts = df['label'].value_counts().sort_index()  # 0, 1 순으로 정렬
+labels = ['부정 (0)', '긍정 (1)']
+counts = [label_counts.get(0, 0), label_counts.get(1, 0)]
+
+# 📊 막대 그래프
+plt.figure(figsize=(6, 4))
+plt.bar(labels, counts, color=['salmon', 'skyblue'])
+plt.title("긍정 / 부정 리뷰 분포")
+plt.ylabel("리뷰 수")
+plt.xlabel("감정 라벨")
+for i, v in enumerate(counts):
+    plt.text(i, v + 0.5, str(v), ha='center', fontsize=12)
+plt.tight_layout()
+plt.show()
+
+# 🥧 파이 차트
+plt.figure(figsize=(6, 6))
+plt.pie(counts, labels=labels, autopct='%1.1f%%', startangle=90, colors=['lightcoral', 'lightskyblue'])
+plt.title("긍정 / 부정 리뷰 비율")
+plt.axis('equal')  # 원형 유지
+plt.show()
+
+<ipython-input-11-3c422f0e650d>:6: FutureWarning: Series.__getitem__ treating keys as positions is deprecated. In a future version, integer keys will always be treated as labels (consistent with DataFrame behavior). To access a value by position, use `ser.iloc[pos]`
+  counts = [label_counts.get(0, 0), label_counts.get(1, 0)]
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 48512 (\N{HANGUL SYLLABLE BU}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 51221 (\N{HANGUL SYLLABLE JEONG}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 44557 (\N{HANGUL SYLLABLE GEUNG}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 44048 (\N{HANGUL SYLLABLE GAM}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 46972 (\N{HANGUL SYLLABLE RA}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 48296 (\N{HANGUL SYLLABLE BEL}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 47532 (\N{HANGUL SYLLABLE RI}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 48624 (\N{HANGUL SYLLABLE BYU}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 49688 (\N{HANGUL SYLLABLE SU}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 48516 (\N{HANGUL SYLLABLE BUN}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+<ipython-input-11-3c422f0e650d>:16: UserWarning: Glyph 54252 (\N{HANGUL SYLLABLE PO}) missing from font(s) DejaVu Sans.
+  plt.tight_layout()
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 47532 (\N{HANGUL SYLLABLE RI}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48624 (\N{HANGUL SYLLABLE BYU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 49688 (\N{HANGUL SYLLABLE SU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 44557 (\N{HANGUL SYLLABLE GEUNG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 51221 (\N{HANGUL SYLLABLE JEONG}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48512 (\N{HANGUL SYLLABLE BU}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48516 (\N{HANGUL SYLLABLE BUN}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 54252 (\N{HANGUL SYLLABLE PO}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 44048 (\N{HANGUL SYLLABLE GAM}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 46972 (\N{HANGUL SYLLABLE RA}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48296 (\N{HANGUL SYLLABLE BEL}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 48708 (\N{HANGUL SYLLABLE BI}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
+/usr/local/lib/python3.11/dist-packages/IPython/core/pylabtools.py:151: UserWarning: Glyph 50984 (\N{HANGUL SYLLABLE YUL}) missing from font(s) DejaVu Sans.
+  fig.canvas.print_figure(bytes_io, **kw)
