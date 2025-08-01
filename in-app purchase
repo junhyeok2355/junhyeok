@@ -1,0 +1,105 @@
+using UnityEngine;
+using UnityEngine.Purchasing;
+using UnityEngine.Purchasing.Extension;
+
+public class IAPManager : MonoBehaviour, IStoreListener
+{
+    public static IAPManager Instance;
+
+    private static IStoreController storeController;          // 인앱 시스템 컨트롤러
+    private static IExtensionProvider extensionProvider;      // 스토어 확장 기능
+
+    // 상품 ID (Google Play Console과 반드시 동일해야 함)
+    public const string PRODUCT_NO_ADS = "no_ads";  // 광고 제거 상품
+    public const string PRODUCT_COIN_PACK = "coin_pack_1000";  // 예시로 1000 코인 상품
+
+    void Awake()
+    {
+        if (Instance == null)
+        {
+            Instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+    }
+
+    void Start()
+    {
+        if (storeController == null)
+        {
+            InitializePurchasing();
+        }
+    }
+
+    public void InitializePurchasing()
+    {
+        var builder = ConfigurationBuilder.Instance(StandardPurchasingModule.Instance());
+
+        // 상품 등록 (소모성, 비소모성 등)
+        builder.AddProduct(PRODUCT_NO_ADS, ProductType.NonConsumable);      // 비소모성
+        builder.AddProduct(PRODUCT_COIN_PACK, ProductType.Consumable);      // 소모성
+
+        UnityPurchasing.Initialize(this, builder);
+    }
+
+    // 구매 시작
+    public void BuyProduct(string productId)
+    {
+        if (storeController != null && storeController.products != null)
+        {
+            Product product = storeController.products.WithID(productId);
+
+            if (product != null && product.availableToPurchase)
+            {
+                Debug.Log($"[IAP] 구매 시도: {product.definition.id}");
+                storeController.InitiatePurchase(product);
+            }
+            else
+            {
+                Debug.Log("[IAP] 상품 구매 불가");
+            }
+        }
+        else
+        {
+            Debug.Log("[IAP] 구매 시스템 초기화 안됨");
+        }
+    }
+
+    // 구매 성공 시
+    public PurchaseProcessingResult ProcessPurchase(PurchaseEventArgs args)
+    {
+        switch (args.purchasedProduct.definition.id)
+        {
+            case PRODUCT_NO_ADS:
+                Debug.Log("[IAP] 광고 제거 상품 구매 성공");
+                // 광고 제거 처리 코드
+                break;
+
+            case PRODUCT_COIN_PACK:
+                Debug.Log("[IAP] 코인팩 구매 성공");
+                // 코인 지급 처리 코드
+                break;
+        }
+
+        return PurchaseProcessingResult.Complete;
+    }
+
+    // 구매 실패 시
+    public void OnPurchaseFailed(Product product, PurchaseFailureReason failureReason)
+    {
+        Debug.Log($"[IAP] 구매 실패: {product.definition.id}, 이유: {failureReason}");
+    }
+
+    // 초기화 성공
+    public void OnInitialized(IStoreController controller, IExtensionProvider extensions)
+    {
+        Debug.Log("[IAP] 초기화 성공");
+        storeController = controller;
+        extensionProvider = extensions;
+    }
+
+    // 초기화 실패
+    public void OnInitializeFailed(InitializationFailureReason error)
+    {
+        Debug.Log($"[IAP] 초기화 실패: {error}");
+    }
+}
