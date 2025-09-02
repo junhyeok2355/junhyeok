@@ -1,74 +1,369 @@
-using System.Collections;
 using UnityEngine;
-using Firebase;
-using Firebase.Auth;
-using TMPro;  // TMP를 사용하는 경우
+using UnityEngine.Networking;
+using TMPro;
+using System.Collections;
+using System.Text;
+using UnityEngine.UI;
 
 public class LoginManager : MonoBehaviour
 {
-    private FirebaseAuth auth;
-    private FirebaseUser user;
+    [Header("API URLs")]
+    private string loginApiUrl = "http://localhost:3000/login";
+    private string registerApiUrl = "http://localhost:3000/register";
+    private string sendCodeApiUrl = "http://localhost:3000/send-verification-email";
+    private string verifyCodeApiUrl = "http://localhost:3000/verify-email-code";
 
-    [Header("UI")]
-    public TMP_InputField emailInput;
-    public TMP_InputField passwordInput;
-    public TMP_Text messageText;
+    [Header("Login UI")]
+    public GameObject loginCanvas;
+    public TMP_InputField loginIdInput;
+    public TMP_InputField loginPwInput;
+    public TextMeshProUGUI loginErrorMessage;
+    public Button loginButton;
+    public Button showRegisterButton;
 
-    void Start()
+    [Header("Register UI")]
+    public GameObject registerCanvas;
+    public TMP_InputField registerUsernameInput;
+    public TMP_InputField registerPasswordInput;
+    public TMP_InputField registerEmailInput;
+    public TMP_InputField registerNicknameInput;
+    public TextMeshProUGUI registerMessageText;
+    public Button sendCodeButton;
+    public Button checkUsernameButton;
+    public TMP_InputField verificationCodeInput;
+    public Button verifyCodeButton;
+    public Button registerButton;
+    public Button backToLoginButton;
+
+    [Header("Game UI")]
+    public GameObject touchToStartCanvas;
+
+    private bool isEmailVerified = false;
+    private bool isUsernameChecked = false;
+
+    private void Start()
     {
-        FirebaseApp.CheckAndFixDependenciesAsync().ContinueWith(task =>
-        {
-            FirebaseApp app = FirebaseApp.DefaultInstance;
-            auth = FirebaseAuth.DefaultInstance;
-        });
+        // 초기 화면 설정
+        loginCanvas.SetActive(true);
+        registerCanvas.SetActive(false);
+        touchToStartCanvas.SetActive(false);
+
+        // 메시지 텍스트 비활성화
+        loginErrorMessage.gameObject.SetActive(false);
+        registerMessageText.gameObject.SetActive(false);
+
+        // 버튼 이벤트 연결
+        loginButton.onClick.AddListener(TryLogin);
+        showRegisterButton.onClick.AddListener(ShowRegisterCanvas);
+        sendCodeButton.onClick.AddListener(OnSendCodeButtonClicked);
+        verifyCodeButton.onClick.AddListener(OnVerifyCodeButtonClicked);
+        registerButton.onClick.AddListener(TryRegister);
+        backToLoginButton.onClick.AddListener(ShowLoginCanvas);
+        checkUsernameButton.onClick.AddListener(OnCheckUsernameButtonClicked);
+
+        // 초기 UI 상태 설정
+        verificationCodeInput.gameObject.SetActive(false);
+        verifyCodeButton.gameObject.SetActive(false);
+        registerButton.interactable = false;
     }
 
-    public void OnClickSignUp()
+    #region UI 전환
+    public void ShowLoginCanvas()
     {
-        string email = emailInput.text;
-        string password = passwordInput.text;
+        loginCanvas.SetActive(true);
+        registerCanvas.SetActive(false);
+    }
 
-        auth.CreateUserWithEmailAndPasswordAsync(email, password).ContinueWith(task =>
+    public void ShowRegisterCanvas()
+    {
+        loginCanvas.SetActive(false);
+        registerCanvas.SetActive(true);
+    }
+    #endregion
+
+    #region 아이디 중복 확인
+    public void OnCheckUsernameButtonClicked()
+    {
+        StartCoroutine(CheckUsernameCoroutine());
+    }
+
+    IEnumerator CheckUsernameCoroutine()
+    {
+        string username = registerUsernameInput.text;
+        if (string.IsNullOrEmpty(username))
         {
-            if (task.IsCanceled || task.IsFaulted)
+            ShowRegisterMessage("아이디를 먼저 입력해주세요.", true);
+            yield break;
+        }
+
+        ShowRegisterMessage("아이디 중복 확인 중...", false);
+
+        string jsonData = $"{{ \"username\": \"{username}\" }}";
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+
+        using (UnityWebRequest request = new UnityWebRequest("http://localhost:3000/check-username", "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
             {
-                Debug.LogWarning("회원가입 실패: " + task.Exception);
-                messageText.text = "회원가입 실패!";
-                return;
+                Debug.LogError("아이디 중복 확인 에러: " + request.error);
+                ServerResponse errorResponse = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+                if (errorResponse != null && !string.IsNullOrEmpty(errorResponse.message))
+                    ShowRegisterMessage(errorResponse.message, true);
+                else
+                    ShowRegisterMessage("서버에 연결할 수 없습니다.", true);
+
+                isUsernameChecked = false;
             }
-
-            user = task.Result;
-            Debug.Log($"회원가입 성공! UID: {user.UserId}");
-            messageText.text = "회원가입 완료!";
-        });
-    }
-
-    public void OnClickLogin()
-    {
-        string email = emailInput.text;
-        string password = passwordInput.text;
-
-        auth.SignInWithEmailAndPasswordAsync(email, password).ContinueWith(task =>
-        {
-            if (task.IsCanceled || task.IsFaulted)
+            else
             {
-                Debug.LogWarning("로그인 실패: " + task.Exception);
-                messageText.text = "로그인 실패!";
-                return;
+                ServerResponse response = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+                if (response.success)
+                {
+                    isUsernameChecked = true;
+                    ShowRegisterMessage(response.message, false); // 흰색 메시지
+                }
+                else
+                {
+                    isUsernameChecked = false;
+                    ShowRegisterMessage(response.message, true); // 빨간색 메시지
+                }
             }
-
-            user = task.Result;
-            Debug.Log($"로그인 성공! UID: {user.UserId}, Email: {user.Email}");
-            messageText.text = $"환영합니다, {user.Email}";
-        });
-    }
-
-    public void OnClickLogout()
-    {
-        if (auth != null)
-        {
-            auth.SignOut();
-            messageText.text = "로그아웃 완료";
         }
     }
+    #endregion
+
+    #region 로그인
+    public void TryLogin()
+    {
+        if (string.IsNullOrEmpty(loginIdInput.text) || string.IsNullOrEmpty(loginPwInput.text))
+        {
+            ShowLoginError("아이디와 비밀번호를 모두 입력해주세요.");
+            return;
+        }
+        StartCoroutine(LoginCoroutine());
+    }
+
+    IEnumerator LoginCoroutine()
+    {
+        LoginRequestData dataToSend = new LoginRequestData
+        {
+            userId = loginIdInput.text,
+            userPassword = loginPwInput.text
+        };
+
+        string jsonData = JsonUtility.ToJson(dataToSend);
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+
+        using (UnityWebRequest request = new UnityWebRequest(loginApiUrl, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                ShowLoginError("아이디 또는 비밀번호가 올바르지 않습니다.");
+            }
+            else
+            {
+                ServerResponse response = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+                if (response.success)
+                {
+                    loginCanvas.SetActive(false);
+                    registerCanvas.SetActive(false);
+                    touchToStartCanvas.SetActive(true);
+                    loginErrorMessage.gameObject.SetActive(false);
+                }
+                else
+                {
+                    ShowLoginError(response.message);
+                }
+            }
+        }
+    }
+
+    private void ShowLoginError(string message)
+    {
+        loginErrorMessage.text = message;
+        loginErrorMessage.gameObject.SetActive(true);
+    }
+    #endregion
+
+    #region 이메일 인증 & 회원가입
+    public void OnSendCodeButtonClicked()
+    {
+        if (string.IsNullOrEmpty(registerEmailInput.text))
+        {
+            ShowRegisterMessage("이메일을 먼저 입력해주세요.", true);
+            return;
+        }
+        StartCoroutine(SendVerificationCodeCoroutine());
+    }
+
+    IEnumerator SendVerificationCodeCoroutine()
+    {
+        ShowRegisterMessage("인증번호를 보내는 중...", false);
+
+        string jsonData = $"{{ \"email\": \"{registerEmailInput.text}\" }}";
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+
+        using (UnityWebRequest request = new UnityWebRequest(sendCodeApiUrl, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            ServerResponse response = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || !response.success)
+            {
+                ShowRegisterMessage(response.message, true);
+            }
+            else
+            {
+                ShowRegisterMessage("인증번호가 발송되었습니다.", false);
+                verificationCodeInput.gameObject.SetActive(true);
+                verifyCodeButton.gameObject.SetActive(true);
+            }
+        }
+    }
+
+    public void OnVerifyCodeButtonClicked()
+    {
+        StartCoroutine(VerifyCodeCoroutine());
+    }
+
+    IEnumerator VerifyCodeCoroutine()
+    {
+        string email = registerEmailInput.text;
+        string code = verificationCodeInput.text;
+        string jsonData = $"{{ \"email\": \"{email}\", \"code\": \"{code}\" }}";
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+
+        using (UnityWebRequest request = new UnityWebRequest(verifyCodeApiUrl, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            ServerResponse response = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || !response.success)
+            {
+                ShowRegisterMessage(response.message, true);
+            }
+            else
+            {
+                isEmailVerified = true;
+                registerButton.interactable = true;
+                verificationCodeInput.interactable = false;
+                verifyCodeButton.interactable = false;
+                ShowRegisterMessage("이메일 인증 성공!", false);
+            }
+        }
+    }
+
+    public void TryRegister()
+    {
+        if (!isUsernameChecked)
+        {
+            ShowRegisterMessage("아이디 중복 확인을 먼저 완료해주세요.", true);
+            return;
+        }
+
+        if (!isEmailVerified)
+        {
+            ShowRegisterMessage("이메일 인증을 먼저 완료해주세요.", true);
+            return;
+        }
+
+        if (string.IsNullOrEmpty(registerUsernameInput.text) ||
+            string.IsNullOrEmpty(registerPasswordInput.text) ||
+            string.IsNullOrEmpty(registerNicknameInput.text))
+        {
+            ShowRegisterMessage("이메일을 제외한 모든 필드를 입력해주세요.", true);
+            return;
+        }
+
+        StartCoroutine(RegisterCoroutine());
+    }
+
+    IEnumerator RegisterCoroutine()
+    {
+        ShowRegisterMessage("회원가입 요청 중...", false);
+
+        RegisterRequestData dataToSend = new RegisterRequestData
+        {
+            username = registerUsernameInput.text,
+            password = registerPasswordInput.text,
+            email = registerEmailInput.text,
+            nickname = registerNicknameInput.text
+        };
+
+        string jsonData = JsonUtility.ToJson(dataToSend);
+        byte[] bodyRaw = Encoding.UTF8.GetBytes(jsonData);
+
+        using (UnityWebRequest request = new UnityWebRequest(registerApiUrl, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            ServerResponse response = JsonUtility.FromJson<ServerResponse>(request.downloadHandler.text);
+            if (request.result != UnityWebRequest.Result.Success || !response.success)
+            {
+                ShowRegisterMessage(response.message, true);
+            }
+            else
+            {
+                ShowRegisterMessage("회원가입 성공! 로그인 화면으로 이동합니다.", false);
+                Invoke("ShowLoginCanvas", 2f);
+            }
+        }
+    }
+
+    private void ShowRegisterMessage(string message, bool isError)
+    {
+        registerMessageText.text = message;
+        registerMessageText.color = isError ? Color.red : Color.white;
+        registerMessageText.gameObject.SetActive(true);
+    }
+    #endregion
 }
+
+#region 데이터 직렬화 클래스
+[System.Serializable]
+public class LoginRequestData
+{
+    public string userId;
+    public string userPassword;
+}
+
+[System.Serializable]
+public class RegisterRequestData
+{
+    public string username;
+    public string password;
+    public string email;
+    public string nickname;
+}
+
+[System.Serializable]
+public class ServerResponse
+{
+    public bool success;
+    public string message;
+}
+#endregion
